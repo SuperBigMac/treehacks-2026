@@ -6,8 +6,8 @@ Camera and inference are separate APIs; this class only orchestrates them.
 import cv2
 import time
 
-from cv.camera import Camera
-from cv.inference import FaceDetectorInference
+from vision.camera import Camera
+from vision.inference import FaceDetectorInference
 
 DEFAULT_FRAME_DELTA_MS = 33  # ~30 fps
 
