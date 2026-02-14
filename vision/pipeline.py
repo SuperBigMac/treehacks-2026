@@ -27,6 +27,7 @@ class FaceCameraPipeline:
         frame_fps: int = DEFAULT_FRAME_FPS,
         window_name: str = "Video Feed",
         show_window: bool = True,
+        shared_state: dict | None = None,
     ):
         self._camera = camera
         self._detector = detector
@@ -34,15 +35,37 @@ class FaceCameraPipeline:
         self._frame_delta_ms = int(1000 / frame_fps)
         self._window_name = window_name
         self._show_window = show_window
+        self._shared_state = shared_state  # When set, updated each frame for cross-process reads
+        self._state = {
+            "is_running": False,
+            "timestamp_ms": 0,
+            "num_faces": 0,
+            "faces": [],
+        }
         
+    def _write_state(self, **kwargs: object) -> None:
+        self._state.update(kwargs)
+        if self._shared_state is not None:
+            for k, v in kwargs.items():
+                self._shared_state[k] = v
+
     def run_pipeline(self, quit_key: str = "q") -> None:
-        timestamp_ms = 0
+        start_time_sec = time.time()
+        self._write_state(is_running=True)
         while True:
+            if self._shared_state and self._shared_state.get("quit_requested"):
+                break
+            curr_time_ms = int((time.time() - start_time_sec) * 1000)
             ret, frame = self._camera.read()
             if not ret or frame is None:
                 break
-            faces = self._detector.detect(frame, timestamp_ms)
-            timestamp_ms += self._frame_delta_ms
+            faces = self._detector.detect(frame, curr_time_ms)
+
+            self._write_state(
+                timestamp_ms=curr_time_ms,
+                num_faces=len(faces),
+                faces=list(faces),
+            )
             for (x1, y1, x2, y2) in faces:
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             if self._show_window:
@@ -52,6 +75,35 @@ class FaceCameraPipeline:
             time.sleep(self._frame_delta_ms / 1000)
         if self._show_window:
             cv2.destroyAllWindows()
+        self._write_state(is_running=False)
+    
+    def getState(self) -> dict[str, any]:
+        """
+        Get the state of the pipeline.
+        """
+        return self._state
+
+
+def run_pipeline_in_process(
+    shared_state: dict,
+    *,
+    show_window: bool = True,
+    camera_index: int = 0,
+    frame_fps: int = DEFAULT_FRAME_FPS,
+    window_name: str = "Video Feed",
+) -> None:
+    """Entry point for a subprocess: runs the pipeline on this process's main thread (required for cv2.imshow on macOS)."""
+    with Camera(camera_index=camera_index) as camera:
+        with FaceDetectorInference() as detector:
+            pipeline = FaceCameraPipeline(
+                camera,
+                detector,
+                frame_fps=frame_fps,
+                window_name=window_name,
+                show_window=show_window,
+                shared_state=shared_state,
+            )
+            pipeline.run_pipeline()
 
 
 if __name__ == "__main__":
