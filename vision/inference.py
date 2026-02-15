@@ -1,20 +1,17 @@
 """
-Face detection inference using MediaPipe.
+Face detection inference using YOLOv8m (Ultralytics).
 """
 
 import os
 import urllib.request
 
 import cv2
-from mediapipe.tasks.python.core.base_options import BaseOptions
-from mediapipe.tasks.python.vision import FaceDetector, FaceDetectorOptions, RunningMode
-from mediapipe.tasks.python.vision.core.image import Image as MpImage
-from mediapipe.tasks.python.vision.core.image import ImageFormat
+from ultralytics import YOLO
 
-MODEL_FILENAME = "face_detection_short_range.tflite"
+# Face-trained YOLOv8m weights (Bingsu/adetailer on Hugging Face)
+MODEL_FILENAME = "face_yolov8m.pt"
 MODEL_URL = (
-    "https://storage.googleapis.com/mediapipe-models/face_detector/"
-    "blaze_face_short_range/float16/latest/blaze_face_short_range.tflite"
+    "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8m.pt"
 )
 
 
@@ -25,13 +22,13 @@ def _default_model_path() -> str:
 def _ensure_model(path: str) -> None:
     if os.path.exists(path):
         return
-    print("Downloading face detection model...")
+    print("Downloading YOLOv8m face detection model...")
     urllib.request.urlretrieve(MODEL_URL, path)
 
 
 class FaceDetectorInference:
     """
-    Runs face detection on video frames using a MediaPipe BlazeFace model.
+    Runs face detection on video frames using YOLOv8m (face-trained).
     Use as a context manager so the detector is closed properly.
     """
 
@@ -39,19 +36,13 @@ class FaceDetectorInference:
         self,
         model_path: str | None = None,
         min_detection_confidence: float = 0.5,
-        delegate: BaseOptions.Delegate = BaseOptions.Delegate.CPU,
+        **kwargs,
     ):
         self._model_path = model_path or _default_model_path()
         _ensure_model(self._model_path)
-        options = FaceDetectorOptions(
-            base_options=BaseOptions(
-                model_asset_path=self._model_path,
-                delegate=delegate,
-            ),
-            running_mode=RunningMode.VIDEO,
-            min_detection_confidence=min_detection_confidence,
-        )
-        self._detector = FaceDetector.create_from_options(options)
+        self._model = YOLO(self._model_path)
+        self._conf = min_detection_confidence
+        self._kwargs = kwargs
 
     def detect(
         self,
@@ -63,27 +54,33 @@ class FaceDetectorInference:
 
         Args:
             frame_bgr: BGR image (e.g. from cv2.VideoCapture).
-            timestamp_ms: Frame timestamp in milliseconds (used for video mode).
+            timestamp_ms: Frame timestamp in milliseconds (unused; for API compatibility).
 
         Returns:
             List of bounding boxes as (x1, y1, x2, y2) in image coordinates.
         """
-        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        mp_image = MpImage(ImageFormat.SRGB, rgb.copy())
-        results = self._detector.detect_for_video(mp_image, timestamp_ms)
+        results = self._model.predict(
+            frame_bgr,
+            conf=self._conf,
+            verbose=False,
+            **self._kwargs,
+        )
         boxes = []
-        if results.detections:
-            for d in results.detections:
-                b = d.bounding_box
-                x1 = int(b.origin_x)
-                y1 = int(b.origin_y)
-                x2 = x1 + int(b.width)
-                y2 = y1 + int(b.height)
+        for r in results:
+            if r.boxes is None:
+                continue
+            for box in r.boxes:
+                xyxy = box.xyxy[0]
+                x1 = int(xyxy[0].item())
+                y1 = int(xyxy[1].item())
+                x2 = int(xyxy[2].item())
+                y2 = int(xyxy[3].item())
                 boxes.append((x1, y1, x2, y2))
         return boxes
 
     def close(self) -> None:
-        self._detector.close()
+        # Ultralytics YOLO doesn't require explicit close; no-op for API compatibility
+        pass
 
     def __enter__(self) -> "FaceDetectorInference":
         return self
