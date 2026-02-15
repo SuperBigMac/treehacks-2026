@@ -63,6 +63,15 @@ class FaceCameraPipeline:
         except (EOFError, ConnectionError, OSError):
             return True  # parent gone, exit cleanly
 
+    def _read_from_main(self, key: str, default: object = None) -> object:
+        """Read a value set by the main process."""
+        if self._shared_state is None:
+            return default
+        try:
+            return self._shared_state.get(key, default)
+        except (EOFError, ConnectionError, OSError):
+            return default
+
     def run_pipeline(self, quit_key: str = "q") -> None:
         start_time_sec = time.time()
         if not self._write_state(is_running=True):
@@ -75,16 +84,31 @@ class FaceCameraPipeline:
                 ret, frame = self._camera.read()
                 if not ret or frame is None:
                     break
-                faces = self._detector.detect(frame, curr_time_ms)
+                # Read state from main process (e.g. pause_detection=True to skip inference)
+                pause_detection = self._read_from_main("pause_detection", False)
+                faces = [] if pause_detection else self._detector.detect(frame, curr_time_ms)
 
+                h, w = frame.shape[:2]
                 if not self._write_state(
                     timestamp_ms=curr_time_ms,
                     num_faces=len(faces),
                     faces=list(faces),
+                    frame_width=w,
+                    frame_height=h,
                 ):
                     break
                 for (x1, y1, x2, y2) in faces:
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                # Overlay target point from main process (target_x, target_y in 0–1 normalized coords)
+                target_x = self._read_from_main("target_x")
+                target_y = self._read_from_main("target_y")
+                if target_x is not None and target_y is not None:
+                    px = int(float(target_x) * w)
+                    py = int(float(target_y) * h)
+                    # Circle + crosshair for visibility
+                    cv2.circle(frame, (px, py), 12, (0, 200, 255), 2)  # orange
+                    cv2.line(frame, (px - 18, py), (px + 18, py), (0, 200, 255), 2)
+                    cv2.line(frame, (px, py - 18), (px, py + 18), (0, 200, 255), 2)
                 if self._show_window:
                     cv2.imshow(self._window_name, frame)
                     if cv2.waitKey(self._frame_delta_ms) == ord(quit_key):

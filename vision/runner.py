@@ -46,6 +46,11 @@ class FacePipelineRunner:
         """Snapshot of pipeline state (is_running, timestamp_ms, num_faces, faces)."""
         return dict(self._state)
 
+    def update_state(self, **kwargs: object) -> None:
+        """Write state from main process; the vision subprocess can read these keys."""
+        for k, v in kwargs.items():
+            self._state[k] = v
+
     def request_quit(self) -> None:
         self._state["quit_requested"] = True
 

@@ -3,6 +3,7 @@ import time
 from hardware.api import HardwareAPI, HardwareDisconnectedError
 from hardware.mock_api import MockHardwareAPI
 from vision.runner import FacePipelineRunner
+from brain import Brain
 
 
 # PORT = "COM11"
@@ -16,12 +17,18 @@ if __name__ == "__main__":
     pipeline.start()
     print("Pipeline running. Check state with pipeline.get_state()")
 
+    # display dummy point
+    pipeline.update_state(pause_detection=False, target_x=0.5, target_y=0.5)
+
     try:
         # hardware_api = HardwareAPI(port=PORT, baudrate=BAUD)
         hardware_api = MockHardwareAPI(port=PORT, baudrate=BAUD)
     except Exception as e:
         print(f"Error initializing hardware API: {e}")
         exit(1)
+
+    # initialize the brain
+    brain = Brain(hardware_api, 0.5, 0.5)
 
     try:
         timestamp_ms = 0
@@ -34,13 +41,18 @@ if __name__ == "__main__":
             timestamp_ms = state["timestamp_ms"]
             if state.get("is_running"):
                 if time.time() - last_message > delay_seconds:
-                    print(f"State: {state['num_faces']} face(s), ts={timestamp_ms} ms")
+                    n = state["num_faces"]
+                    faces = state.get("faces", [])
+                    print(f"State: {n} face(s), ts={timestamp_ms} ms")
+                    for i, (x1, y1, x2, y2) in enumerate(faces):
+                        print(f"  face[{i}] box=({x1}, {y1}, {x2}, {y2})")
                     last_message = time.time()
                     try:
-                        if state["num_faces"] > 0:
-                            hardware_api.send_message("1", verbose=True)
-                        else:
-                            hardware_api.send_message("0", verbose=True)
+                        brain.run(
+                            faces,
+                            frame_width=state.get("frame_width"),
+                            frame_height=state.get("frame_height"),
+                        )
                     except HardwareDisconnectedError as e:
                         print(f"Hardware: {e}")
             if time.time() - last_heartbeat >= heartbeat_interval:
@@ -49,7 +61,7 @@ if __name__ == "__main__":
                     last_heartbeat = time.time()
                 except HardwareDisconnectedError as e:
                     print(f"Hardware: {e}")
-            time.sleep(0.05)
+            time.sleep(1)
     except KeyboardInterrupt:
         print("Keyboard Interrupt. Shutting down.")
     finally:
