@@ -12,6 +12,7 @@ def _default_state() -> dict:
         "num_faces": 0,
         "faces": [],
         "quit_requested": False,
+        "center_crop_fraction": None,
     }
 
 

@@ -113,6 +113,7 @@ class FaceCameraPipeline:
                     faces=list(faces),
                     frame_width=w,
                     frame_height=h,
+                    center_crop_fraction=self._center_crop_fraction,
                 ):
                     break
                 for (x1, y1, x2, y2) in faces:

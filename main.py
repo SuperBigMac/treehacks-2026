@@ -60,6 +60,7 @@ if __name__ == "__main__":
                             faces,
                             frame_width=state.get("frame_width"),
                             frame_height=state.get("frame_height"),
+                            center_crop_fraction=state.get("center_crop_fraction"),
                         )
                     except HardwareDisconnectedError as e:
                         print(f"Hardware: {e}")

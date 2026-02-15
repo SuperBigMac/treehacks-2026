@@ -107,20 +107,29 @@ class Brain:
         centroid_y: float,
         tx_px: float,
         ty_px: float,
+        center_crop_fraction: float | None = None,
     ) -> None:
         """Set angle state and camera pan/tilt. centroid_x/y are normalized 0–1.
         Uses virtual fisheye space (WIDTH×HEIGHT) so angles are correct for both
-        raw fisheye and rectilinear (e.g. 640×480) inference frames."""
+        raw fisheye and rectilinear (e.g. 640×480) inference frames.
+        center_crop_fraction (e.g. 0.6) scales angle conversion when using a cropped image."""
         centroid_x_px = centroid_x * WIDTH
         centroid_y_px = centroid_y * HEIGHT
+        crop = center_crop_fraction
         self.face_theta_deg, self.face_phi_deg = pixel_to_angle(
-            centroid_x_px, centroid_y_px
+            centroid_x_px, centroid_y_px, crop_fraction=crop
         )
-        self.target_theta_deg, self.target_phi_deg = pixel_to_angle(tx_px, ty_px)
+        self.target_theta_deg, self.target_phi_deg = pixel_to_angle(
+            tx_px, ty_px, crop_fraction=crop
+        )
         self.delta_theta_deg = self.face_theta_deg - self.target_theta_deg
         self.delta_phi_deg = self.face_phi_deg - self.target_phi_deg
-        self.angle_delta_x_deg = offset_to_angle(centroid_x_px - tx_px)
-        self.angle_delta_y_deg = offset_to_angle(centroid_y_px - ty_px)
+        self.angle_delta_x_deg = offset_to_angle(
+            centroid_x_px - tx_px, crop_fraction=crop
+        )
+        self.angle_delta_y_deg = offset_to_angle(
+            centroid_y_px - ty_px, crop_fraction=crop
+        )
         self.camera_pan_deg = self.angle_delta_x_deg
         self.camera_tilt_deg = self.angle_delta_y_deg
         print(f"camera move: pan={self.camera_pan_deg:+.2f}° tilt={self.camera_tilt_deg:+.2f}°")
@@ -159,6 +168,7 @@ class Brain:
         detections: List[Tuple[int, int, int, int]],
         frame_width: int | None = None,
         frame_height: int | None = None,
+        center_crop_fraction: float | None = None,
     ) -> None:
         if len(detections) == 0:
             self._clear_state()
@@ -177,7 +187,13 @@ class Brain:
         tx_frame = self.target_x * w if self.target_x <= 1.0 else self.target_x
         ty_frame = self.target_y * h if self.target_y <= 1.0 else self.target_y
 
-        self._update_angles(self.centroid_x, self.centroid_y, tx_px, ty_px)
+        self._update_angles(
+            self.centroid_x,
+            self.centroid_y,
+            tx_px,
+            ty_px,
+            center_crop_fraction=center_crop_fraction,
+        )
         # Negate tilt so hardware "up" matches view (face above target → tilt up)
         self._step_arm(self.angle_delta_x_deg, -self.angle_delta_y_deg)
         self._update_shooting(box, tx_frame, ty_frame)
