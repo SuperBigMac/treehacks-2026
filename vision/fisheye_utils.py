@@ -1,0 +1,65 @@
+"""
+Single 360° lens geometry: ~200° in one direction, 360° in the other.
+
+- theta: 0° at center, 100° at edge (200° total FOV).
+- phi: 0°–360° azimuth.
+"""
+
+import math
+from typing import Tuple
+
+# Full frame (for default center and Brain target scaling)
+WIDTH = 3840
+HEIGHT = 1920
+
+# Center of frame; radius from center to edge of useful FOV
+CENTER_X = 1920  # WIDTH / 2
+CENTER_Y = 960   # HEIGHT / 2
+RADIUS_PX = 960  # pixels from center to edge
+MAX_THETA_DEG = 100  # polar angle at edge (100° from center → 200° total)
+
+
+def pixel_to_angle(
+    x: float,
+    y: float,
+    center_x: float = CENTER_X,
+    center_y: float = CENTER_Y,
+    radius_px: float = RADIUS_PX,
+    max_theta_deg: float = MAX_THETA_DEG,
+) -> Tuple[float, float]:
+    """
+    Convert pixel (x, y) to angles.
+    Returns (theta_deg, phi_deg): theta 0° at center, phi 0°–360°.
+    """
+    dx = x - center_x
+    dy = y - center_y
+    r_pixel = math.sqrt(dx * dx + dy * dy)
+    theta = (r_pixel / radius_px) * max_theta_deg if radius_px > 0 else 0.0
+    phi_rad = math.atan2(dy, dx)
+    phi = math.degrees(phi_rad)
+    if phi < 0:
+        phi += 360.0
+    return theta, phi
+
+
+def face_box_to_angle(
+    box: Tuple[float, float, float, float],
+    center_x: float = CENTER_X,
+    center_y: float = CENTER_Y,
+    radius_px: float = RADIUS_PX,
+    max_theta_deg: float = MAX_THETA_DEG,
+) -> Tuple[float, float]:
+    """Convert face bbox (x1, y1, x2, y2) to (theta_deg, phi_deg) using box center."""
+    x1, y1, x2, y2 = box
+    cx = (x1 + x2) / 2
+    cy = (y1 + y2) / 2
+    return pixel_to_angle(cx, cy, center_x, center_y, radius_px, max_theta_deg)
+
+
+def offset_to_angle(
+    delta_pixels: float,
+    radius_px: float = RADIUS_PX,
+    max_theta_deg: float = MAX_THETA_DEG,
+) -> float:
+    """Convert radial pixel offset to angle in degrees."""
+    return (delta_pixels / radius_px) * max_theta_deg if radius_px > 0 else 0.0

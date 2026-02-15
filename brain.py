@@ -1,0 +1,161 @@
+"""
+orchestrates the hardware and vision pipeline
+
+- receives face detections from vision pipeline
+- calculates the arm position to move the camera to the target
+- sends the arm position to the hardware
+- sends the shooting command to the hardware
+- repeats the process
+"""
+from typing import List, Tuple
+
+from hardware.api import HardwareAPI
+from vision.fisheye_utils import (
+    WIDTH,
+    HEIGHT,
+    face_box_to_angle,
+    offset_to_angle,
+    pixel_to_angle,
+)
+
+class Brain:
+    def __init__(
+        self,
+        hardware_api: HardwareAPI,
+        target_x: float,
+        target_y: float,
+    ):
+        self.is_shooting = False
+        self.arm_x = 0
+        self.arm_y = 0
+        self.hardware_api = hardware_api
+        self.target_x = target_x
+        self.target_y = target_y
+        # Set in run(): face/target angles (deg), deltas, and pixel-offset → angle deltas
+        self.face_theta_deg: float | None = None
+        self.face_phi_deg: float | None = None
+        self.target_theta_deg: float | None = None
+        self.target_phi_deg: float | None = None
+        self.delta_theta_deg: float | None = None
+        self.delta_phi_deg: float | None = None
+        self.angle_delta_x_deg: float | None = None
+        self.angle_delta_y_deg: float | None = None
+        # Camera move to align centroid with target (deg): pan = azimuth, tilt = polar
+        self.camera_pan_deg: float | None = None   # + = pan right
+        self.camera_tilt_deg: float | None = None  # + = tilt down
+        # Centroid in normalized coords (0–1, % of screen)
+        self.centroid_x: float | None = None
+        self.centroid_y: float | None = None
+        self._arm_x_bounds = (-180, 180)
+        self._arm_y_bounds = (-20, 90)
+        # Shoot when centroid is within this fraction of screen from target (0–1)
+        self._shoot_tolerance = 0.05
+
+    def _target_px(self) -> Tuple[float, float]:
+        """Target in pixel coords (normalized 0–1 or already pixels)."""
+        tx = self.target_x * WIDTH if self.target_x <= 1.0 else self.target_x
+        ty = self.target_y * HEIGHT if self.target_y <= 1.0 else self.target_y
+        return tx, ty
+
+    def fix_arm_positions(self) -> None:
+        """Wrap arm positions into [low, high) so they stay within bounds."""
+        lo, hi = self._arm_x_bounds
+        r = hi - lo
+        self.arm_x = ((self.arm_x - lo) % r) + lo
+        lo, hi = self._arm_y_bounds
+        r = hi - lo
+        self.arm_y = ((self.arm_y - lo) % r) + lo
+    
+
+    def send_arm_positions(self) -> None:
+        """Send arm positions to hardware."""
+        self.hardware_api.send_message(f"x {self.arm_x}", rate_limit=False)
+        self.hardware_api.send_message(f"y {self.arm_y}", rate_limit=False)
+
+    def _clear_state(self) -> None:
+        """Clear angle, centroid, and camera-move state (no detections)."""
+        self.face_theta_deg = self.face_phi_deg = None
+        self.target_theta_deg = self.target_phi_deg = None
+        self.delta_theta_deg = self.delta_phi_deg = None
+        self.angle_delta_x_deg = self.angle_delta_y_deg = None
+        self.camera_pan_deg = self.camera_tilt_deg = None
+        self.centroid_x = self.centroid_y = None
+
+    def _largest_face(
+        self, detections: List[Tuple[int, int, int, int]]
+    ) -> Tuple[int, int, int, int]:
+        """Return the face bbox (x1, y1, x2, y2) with largest area."""
+        best = detections[0]
+        best_area = (best[2] - best[0]) * (best[3] - best[1])
+        for det in detections[1:]:
+            area = (det[2] - det[0]) * (det[3] - det[1])
+            if area > best_area:
+                best_area = area
+                best = det
+        return best
+
+    def _update_angles(
+        self,
+        box: Tuple[int, int, int, int],
+        centroid_x: float,
+        centroid_y: float,
+        tx_px: float,
+        ty_px: float,
+    ) -> None:
+        """Set angle state and camera pan/tilt. centroid_x/y are normalized 0–1."""
+        theta, phi = face_box_to_angle(box)
+        self.face_theta_deg = theta
+        self.face_phi_deg = phi
+        self.target_theta_deg, self.target_phi_deg = pixel_to_angle(tx_px, ty_px)
+        self.delta_theta_deg = theta - self.target_theta_deg
+        self.delta_phi_deg = phi - self.target_phi_deg
+        centroid_x_px = centroid_x * WIDTH
+        centroid_y_px = centroid_y * HEIGHT
+        self.angle_delta_x_deg = offset_to_angle(centroid_x_px - tx_px)
+        self.angle_delta_y_deg = offset_to_angle(centroid_y_px - ty_px)
+        self.camera_pan_deg = self.angle_delta_x_deg
+        self.camera_tilt_deg = self.angle_delta_y_deg
+        print(f"camera move: pan={self.camera_pan_deg:+.2f}° tilt={self.camera_tilt_deg:+.2f}°")
+
+    def _step_arm(self, pan_deg: float, tilt_deg: float) -> None:
+        """Update arm by pan/tilt deltas, clamp to bounds, send to hardware."""
+        self.arm_x += pan_deg
+        self.arm_y += tilt_deg
+        self.fix_arm_positions()
+        self.send_arm_positions()
+
+    def _update_shooting(self, centroid_x: float, centroid_y: float) -> None:
+        """Set is_shooting when face centroid is within tolerance of target (normalized 0–1)."""
+        # Target in 0–1 for comparison (target_x/target_y are already 0–1 when from overlay)
+        tx = self.target_x if self.target_x <= 1.0 else self.target_x / WIDTH
+        ty = self.target_y if self.target_y <= 1.0 else self.target_y / HEIGHT
+        on_target = (
+            abs(centroid_x - tx) <= self._shoot_tolerance
+            and abs(centroid_y - ty) <= self._shoot_tolerance
+        )
+        self.is_shooting = on_target
+        self.hardware_api.send_message("1" if on_target else "0", rate_limit=False)
+
+    def run(
+        self,
+        detections: List[Tuple[int, int, int, int]],
+        frame_width: int | None = None,
+        frame_height: int | None = None,
+    ) -> None:
+        if len(detections) == 0:
+            self._clear_state()
+            return
+
+        # Use actual frame size for normalization so centroid is 0–1 (% of screen)
+        w = frame_width if frame_width is not None else WIDTH
+        h = frame_height if frame_height is not None else HEIGHT
+
+        box = self._largest_face(detections)
+        x1, y1, x2, y2 = box
+        self.centroid_x = ((x1 + x2) / 2) / w
+        self.centroid_y = ((y1 + y2) / 2) / h
+        tx_px, ty_px = self._target_px()
+
+        self._update_angles(box, self.centroid_x, self.centroid_y, tx_px, ty_px)
+        self._step_arm(self.angle_delta_x_deg, self.angle_delta_y_deg)
+        self._update_shooting(self.centroid_x, self.centroid_y)

@@ -16,16 +16,21 @@ DEFAULT_RECONNECT_DELAY_SEC = 0.5
 class Camera:
     """
     Camera capture with retries and reconnection. Use as context manager.
+    Optional width/height sets resolution (e.g. 3840×1920 for Picam360).
     """
 
     def __init__(
         self,
         camera_index: int = 0,
+        width: int | None = None,
+        height: int | None = None,
         read_retries: int = DEFAULT_READ_RETRIES,
         retry_delay_sec: float = DEFAULT_RETRY_DELAY_SEC,
         reconnect_delay_sec: float = DEFAULT_RECONNECT_DELAY_SEC,
     ):
         self._index = camera_index
+        self._width = width
+        self._height = height
         self._read_retries = read_retries
         self._retry_delay_sec = retry_delay_sec
         self._reconnect_delay_sec = reconnect_delay_sec
@@ -40,6 +45,10 @@ class Camera:
         cap = cv2.VideoCapture(self._index)
         if cap.isOpened():
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            if self._width is not None:
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._width)
+            if self._height is not None:
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._height)
         return cap
 
     def read(self) -> Tuple[bool, np.ndarray | None]:
