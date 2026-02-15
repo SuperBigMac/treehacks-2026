@@ -28,15 +28,15 @@ int angleToPositionX(int angle_deg)
 
 int angleToPositionY(int angle_deg)
 {
-  if (angle_deg < -90) {
-    angle_deg = -90;
-    DEBUG_SERIAL.println("clamped angle to -90 degrees");
+  if (angle_deg < -20) {
+    angle_deg = -20;
+    DEBUG_SERIAL.println("clamped angle to -20 degrees");
   }
-  if (angle_deg > 20) {
-    angle_deg = 20;
-    DEBUG_SERIAL.println("clamped angle to 20 degrees");
+  if (angle_deg > 90) {
+    angle_deg = 90;
+    DEBUG_SERIAL.println("clamped angle to 90 degrees");
   }
-  return (int)((-1 * angle_deg + 180) * 4095 / 360);
+  return (int)((angle_deg + 180) * 4095 / 360);
 }
 
 void initServo(uint8_t id)
@@ -71,7 +71,7 @@ void setup()
   initServo(SERVO_Y_ID);
 
   DEBUG_SERIAL.println("=================================== ");
-  DEBUG_SERIAL.println("Servo: x <deg: [-180, 180]> or y <deg: [-90, 20]>");
+  DEBUG_SERIAL.println("Servo: x <deg: [-180, 180]> or y <deg: [-20, 90]>");
   DEBUG_SERIAL.println("Digital: 0=LOW, 1=HIGH, 2=PULSE");
   DEBUG_SERIAL.println("=================================== ");
 }
