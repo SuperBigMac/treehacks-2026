@@ -11,8 +11,8 @@ PORT = "COM10"
 BAUD = 9600
 message = "2"
 
-target_x = 0.5
-target_y = 0.5
+target_x = 0.52
+target_y = 0.45
 
 if __name__ == "__main__":
     start_time = time.time()
