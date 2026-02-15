@@ -11,6 +11,9 @@ PORT = "COM10"
 BAUD = 9600
 message = "2"
 
+target_x = 0.5
+target_y = 0.5
+
 if __name__ == "__main__":
     start_time = time.time()
     pipeline = FacePipelineRunner(show_window=True, camera_index=1)
@@ -18,7 +21,7 @@ if __name__ == "__main__":
     print("Pipeline running. Check state with pipeline.get_state()")
 
     # display dummy point
-    pipeline.update_state(pause_detection=False, target_x=0.5, target_y=0.5)
+    pipeline.update_state(pause_detection=False, target_x=target_x, target_y=target_y)
 
     try:
         # hardware_api = HardwareAPI(port=PORT, baudrate=BAUD)
@@ -28,7 +31,7 @@ if __name__ == "__main__":
         exit(1)
 
     # initialize the brain
-    brain = Brain(hardware_api, 0.5, 0.5)
+    brain = Brain(hardware_api, target_x, target_y)
 
     try:
         timestamp_ms = 0
@@ -61,7 +64,6 @@ if __name__ == "__main__":
                     last_heartbeat = time.time()
                 except HardwareDisconnectedError as e:
                     print(f"Hardware: {e}")
-            # time.sleep(0.1)
     except KeyboardInterrupt:
         print("Keyboard Interrupt. Shutting down.")
     finally:
