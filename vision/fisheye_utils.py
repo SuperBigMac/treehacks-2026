@@ -1,24 +1,33 @@
 """
 Simple angle geometry for converting pixel positions to angles (pan/tilt).
 
-- theta: 0° at center, 100° at edge (200° total FOV).
-- phi: 0°–360° azimuth.
-
-Used by Brain for camera pan/tilt from normalized frame coords (crop/resize only, no calibration).
+Viewport = rectangle cutting off a circular fisheye image (equidistant: angle ∝ r).
+Circle radius is derived from the actual frame size (video feed / state).
 """
 
 import math
 from typing import Tuple
 
-# Default frame size (Brain uses for normalized 0–1 → virtual pixel space)
+# Angle (deg) from center to edge of the circle (~180° total → 90° to edge)
+ANGLE_AT_EDGE_DEG = 90.0
+MAX_THETA_DEG = ANGLE_AT_EDGE_DEG
+
+# Circle covers center 2/3 of frame width → radius = frame_width * this fraction
+CIRCLE_RADIUS_FRACTION_OF_WIDTH = 1.0 / 3.0
+
+# Legacy / pixel_to_angle default when no frame size given
 WIDTH = 3840
 HEIGHT = 1920
+CENTER_X = WIDTH / 2
+CENTER_Y = HEIGHT / 2
+RADIUS_PX = WIDTH / 3
+RADIUS_X = RADIUS_PX
+RADIUS_Y = RADIUS_PX
 
-# Center of frame; radius from center to edge of useful FOV
-CENTER_X = 1920  # WIDTH / 2
-CENTER_Y = 960   # HEIGHT / 2
-RADIUS_PX = 960  # pixels from center to edge
-MAX_THETA_DEG = 100  # polar angle at edge (100° from center → 200° total)
+
+def circle_radius_px_from_frame(frame_width: int, frame_height: int) -> float:
+    """Fisheye circle radius in frame pixels (viewport = cut-off circle)."""
+    return frame_width * CIRCLE_RADIUS_FRACTION_OF_WIDTH
 
 
 def pixel_to_angle(

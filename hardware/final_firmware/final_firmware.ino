@@ -15,13 +15,13 @@ const int signalPin = 6;   // digital output pin
 
 int angleToPositionX(int angle_deg)
 {
-  if (angle_deg < -90) {
-    angle_deg = -90;
-    DEBUG_SERIAL.println("clamped angle to -90 degrees");
+  if (angle_deg < -45) {
+    angle_deg = -45;
+    DEBUG_SERIAL.println("clamped angle to -45 degrees");
   }
-  if (angle_deg > 90) {
-    angle_deg = 90;
-    DEBUG_SERIAL.println("clamped angle to 90 degrees");
+  if (angle_deg > 45) {
+    angle_deg = 45;
+    DEBUG_SERIAL.println("clamped angle to 45 degrees");
   }
   return (int)((-1 * angle_deg + 180) * 4095 / 360);
 }
@@ -32,9 +32,9 @@ int angleToPositionY(int angle_deg)
     angle_deg = -20;
     DEBUG_SERIAL.println("clamped angle to -20 degrees");
   }
-  if (angle_deg > 90) {
-    angle_deg = 90;
-    DEBUG_SERIAL.println("clamped angle to 90 degrees");
+  if (angle_deg > 30) {
+    angle_deg = 30;
+    DEBUG_SERIAL.println("clamped angle to 30 degrees");
   }
   return (int)((angle_deg + 180) * 4095 / 360);
 }
@@ -71,9 +71,11 @@ void setup()
   initServo(SERVO_Y_ID);
 
   DEBUG_SERIAL.println("=================================== ");
-  DEBUG_SERIAL.println("Servo: x <deg: [-90, 90]> or y <deg: [-20, 90]>");
+  DEBUG_SERIAL.println("Servo: x <deg: [-45, 45]> or y <deg: [-20, 30]>");
   DEBUG_SERIAL.println("Digital: 0=LOW, 1=HIGH, 2=PULSE");
   DEBUG_SERIAL.println("=================================== ");
+  dxl.setGoalPosition(SERVO_X_ID, angleToPositionX(0));
+  dxl.setGoalPosition(SERVO_Y_ID, angleToPositionY(0));
 }
 
 unsigned long last_message_time = millis();
