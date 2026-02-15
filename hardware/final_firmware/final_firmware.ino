@@ -76,13 +76,23 @@ void setup()
   DEBUG_SERIAL.println("=================================== ");
 }
 
+unsigned long last_message_time = millis();
+const unsigned long SIGNAL_TIMEOUT_MS = 800;
+
 void loop()
 {
+  // If no input received within 800ms, set signal pin low
+  if (millis() - last_message_time >= SIGNAL_TIMEOUT_MS) {
+    digitalWrite(signalPin, LOW);
+  }
+
   if (!DEBUG_SERIAL.available()) return;
 
   String line = DEBUG_SERIAL.readStringUntil('\n');
   line.trim();
   if (line.length() == 0) return;
+
+  last_message_time = millis();
 
   // check digital commands
   if (line == "0") {
@@ -102,6 +112,9 @@ void loop()
     delay(100);
     digitalWrite(signalPin, LOW);
     return;
+  }
+  if (line == "3") {
+    return;  // heartbeat only (timer already updated above; no pin change)
   }
 
   // otherwise assume servo command: "<letter> <number>"
