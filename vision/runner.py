@@ -24,6 +24,8 @@ class FacePipelineRunner:
         camera_index: int = 0,
         frame_fps: int = 30,
         window_name: str = "Video Feed",
+        rotate_180: bool = False,
+        center_crop_fraction: float | None = None,
     ):
         self._manager = Manager()
         self._state = self._manager.dict()
@@ -36,6 +38,8 @@ class FacePipelineRunner:
                 "camera_index": camera_index,
                 "frame_fps": frame_fps,
                 "window_name": window_name,
+                "rotate_180": rotate_180,
+                "center_crop_fraction": center_crop_fraction,
             },
         )
 

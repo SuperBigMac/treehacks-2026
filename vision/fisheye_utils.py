@@ -1,14 +1,16 @@
 """
-Single 360° lens geometry: ~200° in one direction, 360° in the other.
+Simple angle geometry for converting pixel positions to angles (pan/tilt).
 
 - theta: 0° at center, 100° at edge (200° total FOV).
 - phi: 0°–360° azimuth.
+
+Used by Brain for camera pan/tilt from normalized frame coords (crop/resize only, no calibration).
 """
 
 import math
 from typing import Tuple
 
-# Full frame (for default center and Brain target scaling)
+# Default frame size (Brain uses for normalized 0–1 → virtual pixel space)
 WIDTH = 3840
 HEIGHT = 1920
 

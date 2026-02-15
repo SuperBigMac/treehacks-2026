@@ -16,7 +16,12 @@ target_y = 0.5
 
 if __name__ == "__main__":
     start_time = time.time()
-    pipeline = FacePipelineRunner(show_window=True, camera_index=1)
+    pipeline = FacePipelineRunner(
+        show_window=True,
+        camera_index=0,
+        rotate_180=True,
+        center_crop_fraction=0.6,
+    )
     pipeline.start()
     print("Pipeline running. Check state with pipeline.get_state()")
 
@@ -25,7 +30,7 @@ if __name__ == "__main__":
 
     try:
         # hardware_api = HardwareAPI(port=PORT, baudrate=BAUD)
-        hardware_api = HardwareAPI(port=PORT, baudrate=BAUD)
+        hardware_api = MockHardwareAPI(port=PORT, baudrate=BAUD)
     except Exception as e:
         print(f"Error initializing hardware API: {e}")
         exit(1)

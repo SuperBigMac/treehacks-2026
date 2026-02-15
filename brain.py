@@ -13,7 +13,6 @@ from hardware.api import HardwareAPI
 from vision.fisheye_utils import (
     WIDTH,
     HEIGHT,
-    face_box_to_angle,
     offset_to_angle,
     pixel_to_angle,
 )
@@ -104,21 +103,22 @@ class Brain:
 
     def _update_angles(
         self,
-        box: Tuple[int, int, int, int],
         centroid_x: float,
         centroid_y: float,
         tx_px: float,
         ty_px: float,
     ) -> None:
-        """Set angle state and camera pan/tilt. centroid_x/y are normalized 0–1."""
-        theta, phi = face_box_to_angle(box)
-        self.face_theta_deg = theta
-        self.face_phi_deg = phi
-        self.target_theta_deg, self.target_phi_deg = pixel_to_angle(tx_px, ty_px)
-        self.delta_theta_deg = theta - self.target_theta_deg
-        self.delta_phi_deg = phi - self.target_phi_deg
+        """Set angle state and camera pan/tilt. centroid_x/y are normalized 0–1.
+        Uses virtual fisheye space (WIDTH×HEIGHT) so angles are correct for both
+        raw fisheye and rectilinear (e.g. 640×480) inference frames."""
         centroid_x_px = centroid_x * WIDTH
         centroid_y_px = centroid_y * HEIGHT
+        self.face_theta_deg, self.face_phi_deg = pixel_to_angle(
+            centroid_x_px, centroid_y_px
+        )
+        self.target_theta_deg, self.target_phi_deg = pixel_to_angle(tx_px, ty_px)
+        self.delta_theta_deg = self.face_theta_deg - self.target_theta_deg
+        self.delta_phi_deg = self.face_phi_deg - self.target_phi_deg
         self.angle_delta_x_deg = offset_to_angle(centroid_x_px - tx_px)
         self.angle_delta_y_deg = offset_to_angle(centroid_y_px - ty_px)
         self.camera_pan_deg = self.angle_delta_x_deg
@@ -177,7 +177,7 @@ class Brain:
         tx_frame = self.target_x * w if self.target_x <= 1.0 else self.target_x
         ty_frame = self.target_y * h if self.target_y <= 1.0 else self.target_y
 
-        self._update_angles(box, self.centroid_x, self.centroid_y, tx_px, ty_px)
+        self._update_angles(self.centroid_x, self.centroid_y, tx_px, ty_px)
         # Negate tilt so hardware "up" matches view (face above target → tilt up)
         self._step_arm(self.angle_delta_x_deg, -self.angle_delta_y_deg)
         self._update_shooting(box, tx_frame, ty_frame)

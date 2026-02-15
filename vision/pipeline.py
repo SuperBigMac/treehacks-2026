@@ -28,6 +28,8 @@ class FaceCameraPipeline:
         window_name: str = "Video Feed",
         show_window: bool = True,
         shared_state: dict | None = None,
+        rotate_180: bool = False,
+        center_crop_fraction: float | None = None,
     ):
         self._camera = camera
         self._detector = detector
@@ -36,6 +38,8 @@ class FaceCameraPipeline:
         self._window_name = window_name
         self._show_window = show_window
         self._shared_state = shared_state  # When set, updated each frame for cross-process reads
+        self._rotate_180 = rotate_180
+        self._center_crop_fraction = center_crop_fraction
         self._state = {
             "is_running": False,
             "timestamp_ms": 0,
@@ -84,11 +88,25 @@ class FaceCameraPipeline:
                 ret, frame = self._camera.read()
                 if not ret or frame is None:
                     break
+                if self._rotate_180:
+                    frame = cv2.rotate(frame, cv2.ROTATE_180)
+                if self._center_crop_fraction is not None and 0 < self._center_crop_fraction < 1:
+                    h, w = frame.shape[:2]
+                    f = self._center_crop_fraction
+                    cw, ch = int(w * f), int(h * f)
+                    x1 = (w - cw) // 2
+                    y1 = (h - ch) // 2
+                    frame = cv2.resize(
+                        frame[y1 : y1 + ch, x1 : x1 + cw], (w, h), interpolation=cv2.INTER_LINEAR
+                    )
+                inference_frame = frame
                 # Read state from main process (e.g. pause_detection=True to skip inference)
                 pause_detection = self._read_from_main("pause_detection", False)
-                faces = [] if pause_detection else self._detector.detect(frame, curr_time_ms)
+                faces = [] if pause_detection else self._detector.detect(
+                    inference_frame, curr_time_ms
+                )
 
-                h, w = frame.shape[:2]
+                h, w = inference_frame.shape[:2]
                 if not self._write_state(
                     timestamp_ms=curr_time_ms,
                     num_faces=len(faces),
@@ -98,7 +116,7 @@ class FaceCameraPipeline:
                 ):
                     break
                 for (x1, y1, x2, y2) in faces:
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.rectangle(inference_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 # Overlay target point from main process (target_x, target_y in 0–1 normalized coords)
                 target_x = self._read_from_main("target_x")
                 target_y = self._read_from_main("target_y")
@@ -106,11 +124,11 @@ class FaceCameraPipeline:
                     px = int(float(target_x) * w)
                     py = int(float(target_y) * h)
                     # Circle + crosshair for visibility
-                    cv2.circle(frame, (px, py), 12, (0, 200, 255), 2)  # orange
-                    cv2.line(frame, (px - 18, py), (px + 18, py), (0, 200, 255), 2)
-                    cv2.line(frame, (px, py - 18), (px, py + 18), (0, 200, 255), 2)
+                    cv2.circle(inference_frame, (px, py), 12, (0, 200, 255), 2)  # orange
+                    cv2.line(inference_frame, (px - 18, py), (px + 18, py), (0, 200, 255), 2)
+                    cv2.line(inference_frame, (px, py - 18), (px, py + 18), (0, 200, 255), 2)
                 if self._show_window:
-                    cv2.imshow(self._window_name, frame)
+                    cv2.imshow(self._window_name, inference_frame)
                     if cv2.waitKey(self._frame_delta_ms) == ord(quit_key):
                         break
                 time.sleep(self._frame_delta_ms / 1000)
@@ -134,8 +152,10 @@ def run_pipeline_in_process(
     camera_index: int = 0,
     frame_fps: int = DEFAULT_FRAME_FPS,
     window_name: str = "Video Feed",
+    rotate_180: bool = False,
+    center_crop_fraction: float | None = None,
 ) -> None:
-    """Entry point for a subprocess: runs the pipeline on this process's main thread (required for cv2.imshow on macOS)."""
+    """Entry point for a subprocess."""
     try:
         with Camera(camera_index=camera_index) as camera:
             with FaceDetectorInference() as detector:
@@ -146,6 +166,8 @@ def run_pipeline_in_process(
                     window_name=window_name,
                     show_window=show_window,
                     shared_state=shared_state,
+                    rotate_180=rotate_180,
+                    center_crop_fraction=center_crop_fraction,
                 )
                 pipeline.run_pipeline()
     except KeyboardInterrupt:
