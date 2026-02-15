@@ -15,13 +15,13 @@ const int signalPin = 6;   // digital output pin
 
 int angleToPositionX(int angle_deg)
 {
-  if (angle_deg < -180) {
-    angle_deg = -180;
-    DEBUG_SERIAL.println("clamped angle to -180 degrees");
+  if (angle_deg < -90) {
+    angle_deg = -90;
+    DEBUG_SERIAL.println("clamped angle to -90 degrees");
   }
-  if (angle_deg > 180) {
-    angle_deg = 180;
-    DEBUG_SERIAL.println("clamped angle to 180 degrees");
+  if (angle_deg > 90) {
+    angle_deg = 90;
+    DEBUG_SERIAL.println("clamped angle to 90 degrees");
   }
   return (int)((-1 * angle_deg + 180) * 4095 / 360);
 }
@@ -71,7 +71,7 @@ void setup()
   initServo(SERVO_Y_ID);
 
   DEBUG_SERIAL.println("=================================== ");
-  DEBUG_SERIAL.println("Servo: x <deg: [-180, 180]> or y <deg: [-20, 90]>");
+  DEBUG_SERIAL.println("Servo: x <deg: [-90, 90]> or y <deg: [-20, 90]>");
   DEBUG_SERIAL.println("Digital: 0=LOW, 1=HIGH, 2=PULSE");
   DEBUG_SERIAL.println("=================================== ");
 }
