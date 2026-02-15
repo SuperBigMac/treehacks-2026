@@ -48,8 +48,6 @@ class Brain:
         self.centroid_y: float | None = None
         self._arm_x_bounds = (-180, 180)
         self._arm_y_bounds = (-20, 90)
-        # Shoot when centroid is within this fraction of screen from target (0–1)
-        self._shoot_tolerance = 0.05
 
     def _target_px(self) -> Tuple[float, float]:
         """Target in pixel coords (normalized 0–1 or already pixels)."""
@@ -62,9 +60,10 @@ class Brain:
         lo, hi = self._arm_x_bounds
         r = hi - lo
         self.arm_x = ((self.arm_x - lo) % r) + lo
-        lo, hi = self._arm_y_bounds
-        r = hi - lo
-        self.arm_y = ((self.arm_y - lo) % r) + lo
+        if self.arm_y < self._arm_y_bounds[0]:
+            self.arm_y = self._arm_y_bounds[0]
+        elif self.arm_y > self._arm_y_bounds[1]:
+            self.arm_y = self._arm_y_bounds[1]
     
 
     def send_arm_positions(self) -> None:
@@ -81,16 +80,25 @@ class Brain:
         self.camera_pan_deg = self.camera_tilt_deg = None
         self.centroid_x = self.centroid_y = None
 
-    def _largest_face(
-        self, detections: List[Tuple[int, int, int, int]]
+    def _most_central_face(
+        self,
+        detections: List[Tuple[int, int, int, int]],
+        frame_width: int,
+        frame_height: int,
     ) -> Tuple[int, int, int, int]:
-        """Return the face bbox (x1, y1, x2, y2) with largest area."""
+        """Return the face bbox (x1, y1, x2, y2) whose center is closest to frame center."""
+        cx_center = frame_width / 2
+        cy_center = frame_height / 2
         best = detections[0]
-        best_area = (best[2] - best[0]) * (best[3] - best[1])
+        best_cx = (best[0] + best[2]) / 2
+        best_cy = (best[1] + best[3]) / 2
+        best_d2 = (best_cx - cx_center) ** 2 + (best_cy - cy_center) ** 2
         for det in detections[1:]:
-            area = (det[2] - det[0]) * (det[3] - det[1])
-            if area > best_area:
-                best_area = area
+            cx = (det[0] + det[2]) / 2
+            cy = (det[1] + det[3]) / 2
+            d2 = (cx - cx_center) ** 2 + (cy - cy_center) ** 2
+            if d2 < best_d2:
+                best_d2 = d2
                 best = det
         return best
 
@@ -124,16 +132,26 @@ class Brain:
         self.fix_arm_positions()
         self.send_arm_positions()
 
-    def _update_shooting(self, centroid_x: float, centroid_y: float) -> None:
-        """Set is_shooting when face centroid is within tolerance of target (normalized 0–1)."""
-        # Target in 0–1 for comparison (target_x/target_y are already 0–1 when from overlay)
-        tx = self.target_x if self.target_x <= 1.0 else self.target_x / WIDTH
-        ty = self.target_y if self.target_y <= 1.0 else self.target_y / HEIGHT
+    def _update_shooting(
+        self,
+        box: Tuple[int, int, int, int],
+        tx_px: float,
+        ty_px: float,
+    ) -> None:
+        """Set is_shooting when target is inside the face bbox shrunk to 0.8x (same center)."""
+        x1, y1, x2, y2 = box
+        cx = (x1 + x2) / 2
+        cy = (y1 + y2) / 2
+        w_box = x2 - x1
+        h_box = y2 - y1
+        half_w = 0.4 * w_box
+        half_h = 0.4 * h_box
         on_target = (
-            abs(centroid_x - tx) <= self._shoot_tolerance
-            and abs(centroid_y - ty) <= self._shoot_tolerance
+            abs(tx_px - cx) <= half_w
+            and abs(ty_px - cy) <= half_h
         )
         self.is_shooting = on_target
+        print(f"shooting: {on_target}")
         self.hardware_api.send_message("1" if on_target else "0", rate_limit=False)
 
     def run(
@@ -150,12 +168,16 @@ class Brain:
         w = frame_width if frame_width is not None else WIDTH
         h = frame_height if frame_height is not None else HEIGHT
 
-        box = self._largest_face(detections)
+        box = self._most_central_face(detections, w, h)
         x1, y1, x2, y2 = box
         self.centroid_x = ((x1 + x2) / 2) / w
         self.centroid_y = ((y1 + y2) / 2) / h
         tx_px, ty_px = self._target_px()
+        # Target in frame pixel coords (same space as box) for shoot check
+        tx_frame = self.target_x * w if self.target_x <= 1.0 else self.target_x
+        ty_frame = self.target_y * h if self.target_y <= 1.0 else self.target_y
 
         self._update_angles(box, self.centroid_x, self.centroid_y, tx_px, ty_px)
-        self._step_arm(self.angle_delta_x_deg, self.angle_delta_y_deg)
-        self._update_shooting(self.centroid_x, self.centroid_y)
+        # Negate tilt so hardware "up" matches view (face above target → tilt up)
+        self._step_arm(self.angle_delta_x_deg, -self.angle_delta_y_deg)
+        self._update_shooting(box, tx_frame, ty_frame)

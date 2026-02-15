@@ -6,14 +6,14 @@ from vision.runner import FacePipelineRunner
 from brain import Brain
 
 
-# PORT = "COM11"
-PORT = "/dev/tty.usbmodem101"
+PORT = "COM10"
+# PORT = "/dev/tty.usbmodem101"
 BAUD = 9600
 message = "2"
 
 if __name__ == "__main__":
     start_time = time.time()
-    pipeline = FacePipelineRunner(show_window=True)
+    pipeline = FacePipelineRunner(show_window=True, camera_index=1)
     pipeline.start()
     print("Pipeline running. Check state with pipeline.get_state()")
 
@@ -22,7 +22,7 @@ if __name__ == "__main__":
 
     try:
         # hardware_api = HardwareAPI(port=PORT, baudrate=BAUD)
-        hardware_api = MockHardwareAPI(port=PORT, baudrate=BAUD)
+        hardware_api = HardwareAPI(port=PORT, baudrate=BAUD)
     except Exception as e:
         print(f"Error initializing hardware API: {e}")
         exit(1)
@@ -61,7 +61,7 @@ if __name__ == "__main__":
                     last_heartbeat = time.time()
                 except HardwareDisconnectedError as e:
                     print(f"Hardware: {e}")
-            time.sleep(1)
+            # time.sleep(0.1)
     except KeyboardInterrupt:
         print("Keyboard Interrupt. Shutting down.")
     finally:

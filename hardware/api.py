@@ -48,6 +48,12 @@ class HardwareAPI:
         self.last_message = 0.0
         self._last_reconnect_attempt = 0.0
         self._reconnect()
+        self.init_commands()
+    
+    def init_commands(self) -> None:
+        self.send_message("x 0", verbose=True, rate_limit=False)
+        self.send_message("y 0", verbose=True, rate_limit=False)
+        self.send_message("0", verbose=True, rate_limit=False)
 
     def _reconnect(self) -> None:
         """
@@ -120,7 +126,8 @@ class HardwareAPI:
                 print("Rate limited.")
             return
 
-        data = message.encode("utf-8")
+        # Arduino firmware uses readStringUntil('\n') — send a newline so the line is delivered
+        data = (message + "\n").encode("utf-8")
         last_err = None
         for attempt in range(WRITE_RETRIES):
             try:
